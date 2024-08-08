@@ -22,71 +22,114 @@ LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
 */
-
 #include <Windows.h>
 #include <iostream>
-
-
+#include <TlHelp32.h>
 
 namespace Globals
 {
-	DWORD dwProcessId;
-	HANDLE hProcess = nullptr;
-	HWND hWindow;
-	const char* ProcessWindow = "Spotify Premium";
+    DWORD dwProcessId;
+    HANDLE hProcess = nullptr;
+    HWND hWindow;
+    const char* ProcessWindow = "Spotify Premium";
 
-
-	HANDLE hCurrentProcess;
-	HANDLE hDuplicateHandle = nullptr;
-
+    HANDLE hCurrentProcess;
+    HANDLE hDuplicateHandle = nullptr;
+    HANDLE hExistingHandle = nullptr;
 }
 
 
+HANDLE GetHandles(DWORD dwProcessId)
+{
+    HANDLE hSnapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+    if (hSnapshot == INVALID_HANDLE_VALUE)
+    {
+        return nullptr;
+    }
+
+    PROCESSENTRY32 pe32;
+    pe32.dwSize = sizeof(PROCESSENTRY32);
+
+    if (!Process32First(hSnapshot, &pe32))
+    {
+        CloseHandle(hSnapshot);
+        return nullptr;
+    }
+
+   
+    do
+    {
+        if (pe32.th32ProcessID == dwProcessId)
+        {
+
+            Globals::hExistingHandle = OpenProcess(PROCESS_ALL_ACCESS, FALSE, pe32.th32ProcessID);
+            if (Globals::hExistingHandle)
+            {
+                break;
+            }
+        }
+    } while (Process32Next(hSnapshot, &pe32));
+
+    CloseHandle(hSnapshot);
+    return Globals::hExistingHandle;
+}
+
 int main()
 {
-	while (Globals::hWindow == NULL)
-	{
-		Globals::hWindow = FindWindowA(NULL, Globals::ProcessWindow);
-		Sleep(100);
-	}
-	
-	GetWindowThreadProcessId(Globals::hWindow, &Globals::dwProcessId);
-	if (!Globals::dwProcessId)
-	{
-		printf("Cannot find dwProcessId\n");
-	}
-	else
-	{
-		printf("dwProcessId found %d", Globals::dwProcessId);
-	}
+    while (Globals::hWindow == NULL)
+    {
+        Globals::hWindow = FindWindowA(NULL, Globals::ProcessWindow);
+        Sleep(100);
+    }
 
-	Globals::hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, Globals::dwProcessId);
-	if (!Globals::hProcess)
-	{
-		printf("\nCannot open the process");
-	}
-	else
-	{
-		printf("\nhProcess opened with handle: %p", Globals::hProcess);
-	}
+    GetWindowThreadProcessId(Globals::hWindow, &Globals::dwProcessId);
+    if (!Globals::dwProcessId)
+    {
+        printf("Cannot find dwProcessId\n");
+        return 1;
+    }
+    else
+    {
+        printf("dwProcessId found %d\n", Globals::dwProcessId);
+    }
 
-	Globals::hCurrentProcess = GetCurrentProcess();
+    Globals::hProcess = GetHandles(Globals::dwProcessId);
+    if (!Globals::hProcess)
+    {
 
-	if (!DuplicateHandle(Globals::hCurrentProcess, Globals::hProcess, Globals::hCurrentProcess, &Globals::hDuplicateHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
-	{
-		std::cout << "Cannot duplicate handle " << GetLastError() << std::endl;
-	}
-	else
-	{
-		printf("\nHandle created %p", Globals::hDuplicateHandle);
-	}
+        Globals::hProcess = OpenProcess(PROCESS_CREATE_THREAD | PROCESS_QUERY_INFORMATION | PROCESS_VM_OPERATION | PROCESS_VM_WRITE | PROCESS_VM_READ, FALSE, Globals::dwProcessId);
+        if (!Globals::hProcess)
+        {
+            printf("\nCannot open the process\n");
+            return 1;
+        }
+        else
+        {
+            printf("\nhProcess opened with handle: %p\n", Globals::hProcess);
+        }
+    }
+    else
+    {
+        printf("\nExisting handle found: %p\n", Globals::hProcess);
+    }
 
-	printf("\nProcess Information:");
-	printf("\nProcessId: %d", Globals::dwProcessId);
-	printf("\nProcess Window: %s", Globals::ProcessWindow);
-	printf("\nProcess New Handle: %p", Globals::hDuplicateHandle);
-	std::cout << "" << std::endl;
-	
+    Globals::hCurrentProcess = GetCurrentProcess();
 
-	system("pause");
+    if (!DuplicateHandle(Globals::hCurrentProcess, Globals::hProcess, Globals::hCurrentProcess, &Globals::hDuplicateHandle, 0, FALSE, DUPLICATE_SAME_ACCESS))
+    {
+        std::cout << "Cannot duplicate handle " << GetLastError() << std::endl;
+    }
+    else
+    {
+        printf("\nHandle created %p\n", Globals::hDuplicateHandle);
+    }
+
+    printf("\nProcess Information:");
+    printf("\nProcessId: %d", Globals::dwProcessId);
+    printf("\nProcess Window: %s", Globals::ProcessWindow);
+    printf("\nProcess New Handle: %p\n", Globals::hDuplicateHandle);
+    std::cout << "" << std::endl;
+
+    system("pause");
+    return 0;
 }
